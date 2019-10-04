@@ -4,8 +4,7 @@ version = "0.1.0"
 authors = ["Henri Sivonen <hsivonen@hsivonen.fi>"]
 
 [dependencies.encoding_c]
-version = "0.9.1"
-features = ["fast-legacy-encode"]
+version = "0.9.5"
 
 [lib]
 crate-type = ["staticlib"]
