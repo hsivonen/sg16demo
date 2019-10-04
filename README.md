@@ -8,8 +8,8 @@ Please see the file named COPYRIGHT.
 
 ## Building
 
-Git, GNU Make and a version of GCC recent enough to accept `-std=c++17` are
-assumed to be already installed. (Ubuntu 18.04 is known to work.)
+Git, GNU Make and `clang-9` are
+assumed to be already installed. (Ubuntu 18.04 with packages from apt.llvm.org is known to work.)
 
 ### 0. Install Rust (including Cargo) if you haven't already
 
@@ -41,5 +41,7 @@ make
 ### 4. Run it
 
 ```
-./sg16demo --help
+./sg16demo
 ```
+
+(Prints nothing because assertions don't fire.)
