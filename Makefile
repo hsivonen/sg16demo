@@ -9,7 +9,7 @@
 
 CC=clang-9
 CXX=clang-9
-CPPFLAGS = -Wall -Wextra -Werror -O3 -std=c++2a -stdlib=libc++ -I../GSL/include/
+CPPFLAGS = -Wall -Wextra -Werror -O3 -std=c++17 -stdlib=libc++ -I../GSL/include/
 LDFLAGS = -Wl,--gc-sections -ldl -lpthread -lgcc_s -lrt -lc -lm -lc++ -lc++abi
 
 sg16demo: sg16demo.o rustglue/target/release/librustglue.a
@@ -28,7 +28,7 @@ all: sg16demo
 
 .PHONY: fmt
 fmt:
-	clang-format-6.0 --style=mozilla -i *.cpp
+	clang-format-9 --style=Google -i *.cpp
 
 .PHONY: clean
 clean:

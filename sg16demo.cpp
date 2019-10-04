@@ -7,305 +7,123 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#include <getopt.h>
-#include <iterator>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <cassert>
+#include <iostream>
+#include <iterator>
+
 #include "encoding_rs_cpp.h"
 
 using namespace encoding_rs;
 
-const Encoding*
-get_encoding(const char* label)
-{
-  const Encoding* enc =
-    Encoding::for_label(gsl::cstring_span<>(label, strlen(label)));
-  if (!enc) {
-    fprintf(stderr, "%s is not a known encoding label; exiting.", label);
-    exit(-2);
+static int step = 0;
+
+void parse_text(std::string_view buffer) {
+  switch (step) {
+    case 0:
+      assert(buffer == u8"日本");
+      break;
+    case 1:
+      assert(buffer == u8"語実");
+      break;
+    case 2:
+      assert(buffer == u8"験");
+      break;
+    case 3:
+      assert(buffer == u8"�");
+      break;
+    default:
+      assert(false);
+      break;
   }
-  return enc;
+  ++step;
 }
 
-void
-print_usage(const char* program)
-{
-  printf(
-    "Usage: %s [-f INPUT_ENCODING] [-t OUTPUT_ENCODING] [-o OUTFILE] [INFILE] "
-    "[...]\n\n"
-    "Options:\n"
-    "    -o, --output PATH\n"
-    "                        set output file name (- for stdout; the default)\n"
-    "    -f, --from-code LABEL\n"
-    "                        set input encoding (defaults to UTF-8)\n"
-    "    -t, --to-code LABEL\n"
-    "                        set output encoding (defaults to UTF-8)\n"
-    "    -u, --utf16-intermediate\n"
-    "                        use UTF-16 instead of UTF-8 as the intermediate\n"
-    "                        encoding\n"
-    "    -h, --help          print usage help\n",
-    program);
-}
+void finish_parse() { assert(step == 4); }
 
-#define INPUT_BUFFER_SIZE 2048
-#define UTF8_INTERMEDIATE_BUFFER_SIZE 4096
-#define UTF16_INTERMEDIATE_BUFFER_SIZE 2048
-#define OUTPUT_BUFFER_SIZE 4096
+class Listener {
+ public:
+  Listener() = default;
+  ~Listener() = default;
+  void on_start(std::optional<gsl::cstring_span<>> charset);
+  void on_data(gsl::span<const uint8_t> data);
+  void on_end();
 
-void
-convert_via_utf8(Decoder& decoder,
-                 Encoder& encoder,
-                 FILE* read,
-                 FILE* write,
-                 bool last)
-{
-  std::array<uint8_t, INPUT_BUFFER_SIZE> input_buffer;
-  std::array<uint8_t, UTF8_INTERMEDIATE_BUFFER_SIZE> intermediate_buffer;
-  std::array<uint8_t, OUTPUT_BUFFER_SIZE> output_buffer;
+ private:
+  std::unique_ptr<Decoder> mDecoder;
+};
 
-  bool current_input_ended = false;
-  while (!current_input_ended) {
-    size_t decoder_input_end =
-      fread(input_buffer.data(), 1, input_buffer.size(), read);
-    if (ferror(read)) {
-      fprintf(stderr, "Error reading input.");
-      exit(-5);
-    }
-    current_input_ended = (decoder_input_end == 0);
-    bool input_ended = last && current_input_ended;
-    size_t decoder_input_start = 0;
-    for (;;) {
-      size_t decoder_read;
-      size_t decoder_written;
-      uint32_t decoder_result;
-
-      std::tie(decoder_result, decoder_read, decoder_written, std::ignore) =
-        decoder.decode_to_utf8(
-          gsl::span<const uint8_t>(input_buffer)
-            .subspan(decoder_input_start,
-                     decoder_input_end - decoder_input_start),
-          intermediate_buffer,
-          input_ended);
-      decoder_input_start += decoder_read;
-
-      bool last_output = (input_ended && (decoder_result == INPUT_EMPTY));
-
-      // Regardless of whether the intermediate buffer got full
-      // or the input buffer was exhausted, let's process what's
-      // in the intermediate buffer.
-
-      if (encoder.encoding() == UTF_8_ENCODING) {
-        // If the target is UTF-8, optimize out the encoder.
-        size_t file_written =
-          fwrite(intermediate_buffer.data(), 1, decoder_written, write);
-        if (file_written != decoder_written) {
-          fprintf(stderr, "Error writing output.");
-          exit(-7);
-        }
-      } else {
-        size_t encoder_input_start = 0;
-        for (;;) {
-          size_t encoder_read;
-          size_t encoder_written;
-          uint32_t encoder_result;
-
-          std::tie(encoder_result, encoder_read, encoder_written, std::ignore) =
-            encoder.encode_from_utf8(
-              std::string_view(
-                reinterpret_cast<char*>(intermediate_buffer.data()),
-                intermediate_buffer.size())
-                .substr(encoder_input_start,
-                        decoder_written - encoder_input_start),
-              output_buffer,
-              last_output);
-          encoder_input_start += encoder_read;
-          size_t file_written =
-            fwrite(output_buffer.data(), 1, encoder_written, write);
-          if (file_written != encoder_written) {
-            fprintf(stderr, "Error writing output.");
-            exit(-6);
-          }
-          if (encoder_result == INPUT_EMPTY) {
-            break;
-          }
-        }
-      }
-
-      // Now let's see if we should read again or process the
-      // rest of the current input buffer.
-      if (decoder_result == INPUT_EMPTY) {
-        break;
-      }
-    }
+void Listener::on_start(std::optional<gsl::cstring_span<>> charset) {
+  const Encoding* encoding = nullptr;
+  if (charset) {
+    encoding = Encoding::for_label(*charset);
   }
-}
-
-void
-convert_via_utf16(Decoder& decoder,
-                  Encoder& encoder,
-                  FILE* read,
-                  FILE* write,
-                  bool last)
-{
-  std::array<uint8_t, INPUT_BUFFER_SIZE> input_buffer;
-  std::array<char16_t, UTF16_INTERMEDIATE_BUFFER_SIZE> intermediate_buffer;
-  std::array<uint8_t, OUTPUT_BUFFER_SIZE> output_buffer;
-
-  bool current_input_ended = false;
-  while (!current_input_ended) {
-    size_t decoder_input_end =
-      fread(input_buffer.data(), 1, input_buffer.size(), read);
-    if (ferror(read)) {
-      fprintf(stderr, "Error reading input.");
-      exit(-5);
-    }
-    current_input_ended = (decoder_input_end == 0);
-    bool input_ended = last && current_input_ended;
-    size_t decoder_input_start = 0;
-    for (;;) {
-      size_t decoder_read;
-      size_t decoder_written;
-      uint32_t decoder_result;
-
-      std::tie(decoder_result, decoder_read, decoder_written, std::ignore) =
-        decoder.decode_to_utf16(
-          gsl::span<const uint8_t>(input_buffer)
-            .subspan(decoder_input_start,
-                     decoder_input_end - decoder_input_start),
-          intermediate_buffer,
-          input_ended);
-      decoder_input_start += decoder_read;
-
-      bool last_output = (input_ended && (decoder_result == INPUT_EMPTY));
-
-      // Regardless of whether the intermediate buffer got full
-      // or the input buffer was exhausted, let's process what's
-      // in the intermediate buffer.
-
-      size_t encoder_input_start = 0;
-      for (;;) {
-        size_t encoder_read;
-        size_t encoder_written;
-        uint32_t encoder_result;
-
-        std::tie(encoder_result, encoder_read, encoder_written, std::ignore) =
-          encoder.encode_from_utf16(
-            std::u16string_view(intermediate_buffer.data(),
-                                intermediate_buffer.size())
-              .substr(encoder_input_start,
-                      decoder_written - encoder_input_start),
-            output_buffer,
-            last_output);
-        encoder_input_start += encoder_read;
-        size_t file_written =
-          fwrite(output_buffer.data(), 1, encoder_written, write);
-        if (file_written != encoder_written) {
-          fprintf(stderr, "Error writing output.");
-          exit(-6);
-        }
-        if (encoder_result == INPUT_EMPTY) {
-          break;
-        }
-      }
-
-      // Now let's see if we should read again or process the
-      // rest of the current input buffer.
-      if (decoder_result == INPUT_EMPTY) {
-        break;
-      }
-    }
+  if (!encoding) {
+    encoding = WINDOWS_1252_ENCODING;
   }
+  mDecoder = encoding->new_decoder();
 }
 
-void
-convert(Decoder& decoder,
-        Encoder& encoder,
-        FILE* read,
-        FILE* write,
-        bool last,
-        bool use_utf16)
-{
-  if (use_utf16) {
-    convert_via_utf16(decoder, encoder, read, write, last);
-  } else {
-    convert_via_utf8(decoder, encoder, read, write, last);
-  }
-}
+void Listener::on_data(gsl::span<const uint8_t> data) {
+  // No explicit BOM handling code needed: Built into
+  // the decoder.
 
-int
-main(int argc, char** argv)
-{
-  static struct option long_options[] = {
-    { "output", required_argument, NULL, 'o' },
-    { "from-code", required_argument, NULL, 'f' },
-    { "to-code", required_argument, NULL, 't' },
-    { "utf16-intermediate", no_argument, NULL, 'u' },
-    { "help", no_argument, NULL, 'h' },
-    { 0, 0, 0, 0 }
-  };
-
-  bool use_utf16 = false;
-  const Encoding* input_encoding = UTF_8_ENCODING;
-  const Encoding* output_encoding = UTF_8_ENCODING;
-  FILE* output = stdout;
+  // intentionally unrealistically small to demo boundary
+  // conditions.
+  std::array<uint8_t, 8> buffer;
 
   for (;;) {
-    int option_index = 0;
-    int c = getopt_long(argc, argv, "o:f:t:uh", long_options, &option_index);
-    if (c == -1) {
-      break;
+    size_t read;
+    size_t written;
+    uint32_t result;
+
+    std::tie(result, read, written, std::ignore) =
+        mDecoder->decode_to_utf8(data, buffer, false);
+    data = data.subspan(read);
+    if (written) {
+      parse_text(
+          std::string_view(reinterpret_cast<char*>(buffer.data()), written));
     }
-    if (!c) {
-      // Got a long option
-      c = long_options[option_index].val;
-    }
-    switch (c) {
-      case 'o':
-        output = fopen(optarg, "wb");
-        if (!output) {
-          fprintf(stderr, "Cannot open %s for writing; exiting.", optarg);
-          exit(-3);
-        }
-        break;
-      case 'f':
-        input_encoding = get_encoding(optarg);
-        break;
-      case 't':
-        output_encoding = get_encoding(optarg);
-        break;
-      case 'u':
-        use_utf16 = true;
-        break;
-      case 'h':
-        print_usage(argv[0]);
-        exit(0);
-      case '?':
-        print_usage(argv[0]);
-        exit(-1);
-      default:
-        break;
+    if (result == INPUT_EMPTY) {
+      return;
     }
   }
+}
 
-  std::unique_ptr<Decoder> decoder = input_encoding->new_decoder();
-  std::unique_ptr<Encoder> encoder = output_encoding->new_encoder();
+void Listener::on_end() {
+  std::array<uint8_t, 4> buffer;
+  size_t read;
+  size_t written;
+  uint32_t result;
 
-  if (optind == argc) {
-    convert(*decoder, *encoder, stdin, output, true, use_utf16);
-  } else {
-    while (optind < argc) {
-      const char* path = argv[optind++];
-      FILE* read = fopen(path, "rb");
-      if (!read) {
-        fprintf(stderr, "Cannot open %s for reading; exiting.", path);
-        exit(-4);
-      }
-      convert(*decoder, *encoder, read, output, (optind == argc), use_utf16);
-    }
+  std::tie(result, read, written, std::ignore) =
+      mDecoder->decode_to_utf8(gsl::span<const uint8_t>(), buffer, true);
+  assert(read == 0);
+  assert(result == INPUT_EMPTY);
+  if (written) {
+    parse_text(
+        std::string_view(reinterpret_cast<char*>(buffer.data()), written));
   }
+  finish_parse();
+}
 
+int main(int, char**) {
+  auto listener = std::make_unique<Listener>();
+  listener->on_start("sjis");
+  // 日本語実験 followed by valid lead without trail
+  const uint8_t first[] = {0x93};
+  const uint8_t second[] = {0xfa, 0x96, 0x7b, 0x8c, 0xea, 0x8e, 0xc0, 0x8c};
+  const uint8_t third[] = {
+      0xb1,
+      0xfa  // valid lead without trail
+  };
+  listener->on_data(gsl::make_span(first));
+  listener->on_data(gsl::make_span(second));
+  listener->on_data(gsl::make_span(third));
+  listener->on_end();
   exit(0);
 }

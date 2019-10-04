@@ -1,11 +1,6 @@
-# recode_cpp
+# sg16demo
 
-recode_cpp is a test/sample app that's written in C++17 and uses
-[encoding_rs](https://github.com/hsivonen/encoding_rs).
-
-It expects [GSL](https://github.com/Microsoft/GSL) to have been checked out
-to an adjacent directory. Revision `d6a2242d97827449f3f1c1c2e54214ceb9e80d62`
-was tested.
+Demo program for C++ Unicode Study Group mailing list.
 
 ## Licensing
 
@@ -24,10 +19,10 @@ Linux and OS X, this means:
 curl https://sh.rustup.rs -sSf | sh
 ```
 
-### 1. Clone recode_cpp
+### 1. Clone sg16demo
 
 ```
-git clone https://github.com/hsivonen/recode_cpp.git
+git clone https://github.com/hsivonen/sg16demo.git
 ```
 
 ### 2. Clone GSL
@@ -36,15 +31,15 @@ git clone https://github.com/hsivonen/recode_cpp.git
 git clone https://github.com/Microsoft/GSL.git
 ```
 
-### 3. Build recode_cpp
+### 3. Build sg16demo
 
 ```
-cd recode_cpp
+cd sg16demo
 make
 ```
 
 ### 4. Run it
 
 ```
-./recode_cpp --help
+./sg16demo --help
 ```
