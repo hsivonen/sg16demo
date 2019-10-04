@@ -7,13 +7,15 @@
 # option. This file may not be copied, modified, or distributed
 # except according to those terms.
 
-CPPFLAGS = -Wall -Wextra -Werror -O3 -std=c++17 -I../GSL/include/
-LDFLAGS = -Wl,--gc-sections -ldl -lpthread -lgcc_s -lrt -lc -lm -lstdc++
+CC=clang-9
+CXX=clang-9
+CPPFLAGS = -Wall -Wextra -Werror -O3 -std=c++2a -stdlib=libc++ -I../GSL/include/
+LDFLAGS = -Wl,--gc-sections -ldl -lpthread -lgcc_s -lrt -lc -lm -lc++ -lc++abi
 
-recode_cpp: recode_cpp.o rustglue/target/release/librustglue.a
+sg16demo: sg16demo.o rustglue/target/release/librustglue.a
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-recode_cpp.o: recode_cpp.cpp encoding_rs.h encoding_rs_statics.h encoding_rs_cpp.h ../GSL/include/gsl/gsl ../GSL/include/gsl/span
+sg16demo.o: sg16demo.cpp encoding_rs.h encoding_rs_statics.h encoding_rs_cpp.h ../GSL/include/gsl/gsl ../GSL/include/gsl/span
 
 rustglue/target/release/librustglue.a: cargo
 
@@ -22,7 +24,7 @@ cargo:
 	cd rustglue/; cargo build --release
 
 .PHONY: all
-all: recode_cpp
+all: sg16demo
 
 .PHONY: fmt
 fmt:
@@ -30,5 +32,5 @@ fmt:
 
 .PHONY: clean
 clean:
-	rm recode_cpp
+	rm sg16demo
 	cd rustglue/; cargo clean
