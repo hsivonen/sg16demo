@@ -96,18 +96,24 @@ void Listener::on_data(gsl::span<const uint8_t> data) {
 
 void Listener::on_end() {
   std::array<uint8_t, 4> buffer;
-  size_t read;
-  size_t written;
-  uint32_t result;
 
-  std::tie(result, read, written, std::ignore) =
-      mDecoder->decode_to_utf8(gsl::span<const uint8_t>(), buffer, true);
-  assert(read == 0);
-  assert(result == INPUT_EMPTY);
-  if (written) {
-    parse_text(
-        std::string_view(reinterpret_cast<char*>(buffer.data()), written));
+  for (;;) {
+    size_t read;
+    size_t written;
+    uint32_t result;
+
+    std::tie(result, read, written, std::ignore) =
+        mDecoder->decode_to_utf8(gsl::span<const uint8_t>(), buffer, true);
+    assert(read == 0);
+    if (written) {
+      parse_text(
+          std::string_view(reinterpret_cast<char*>(buffer.data()), written));
+    }
+    if (result == INPUT_EMPTY) {
+      break;
+    }
   }
+
   finish_parse();
 }
 
